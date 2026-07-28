@@ -11,6 +11,7 @@ accessible, and easy to review.
 - Keep interactive controls keyboard reachable and use the existing
   `focus-visible` ring styles.
 - Do not pass secrets or private keys into display or clipboard components.
+- Refer to the [Forms and Validation Guide](./forms.md) for shared validation contracts, error message conventions, and form state management rules.
 
 ## Layout and Navigation
 
@@ -145,11 +146,28 @@ the action cannot be undone.
 | `error` | `ReactNode` | no | Error text; sets `aria-invalid` and `role="alert"`. |
 | other input attributes | `InputHTMLAttributes<HTMLInputElement>` | no | Supports `name`, `type`, `value`, `onChange`, `required`, and `autoComplete`. |
 
+`TextField` automatically manages internal component IDs to link the label (`htmlFor`), helper text (`aria-describedby`), and error messages. When an `error` prop is passed, `TextField`:
+1. Flips `aria-invalid` to `true`.
+2. Connects the error message element's ID to `aria-describedby`.
+3. Renders the error message inside a `span` with `role="alert"` for screen reader announcements.
+
+Always clear field-specific error states inside the `onChange` handler as the user types. For full details on validator contracts and form conventions, see the [Forms and Validation Guide](./forms.md).
+
 ```tsx
 <TextField
   label="Webhook URL"
   type="url"
   description="Use an HTTPS endpoint that can receive AgentPay events."
+/>
+
+<TextField
+  label="Service ID"
+  value={serviceId}
+  onChange={(e) => {
+    setServiceId(e.target.value);
+    setServiceIdError(null);
+  }}
+  error={serviceIdError ?? undefined}
 />
 ```
 
@@ -263,6 +281,27 @@ separate element.
 <StatusDot variant="warn" label="Paused" />
 ```
 
+### `ErrorMessage`
+
+| Prop | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `title` | `string` | yes | Primary error summary text. |
+| `detail` | `string \| null` | no | Secondary detail with more context about the failure. |
+| `requestId` | `string` | no | Backend request identifier shown as a monospace badge for debugging. |
+| `onRetry` | `() => void` | no | When provided, renders a "Try again" button that calls this callback. |
+
+The component is wrapped with `React.memo` so it does not re-render (and re-announce via `role="alert"`) on unrelated parent updates.
+
+```tsx
+<ErrorMessage title="Failed to load services" detail={error} />
+<ErrorMessage
+  title="Recording failed"
+  detail="Backend rejected the request."
+  requestId="req-abc-123"
+  onRetry={handleRetry}
+/>
+```
+
 ### `Spinner`
 
 | Prop | Type | Required | Notes |
@@ -305,6 +344,66 @@ instead of only inside the tooltip.
 ```
 
 ## Data Display
+
+### `DataTable`
+
+| Prop | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `caption` | `ReactNode` | yes | Rendered as a visible `<caption>` above the table. Screen readers announce it as the table's accessible name. |
+| `columns` | `DataTableColumn<T>[]` | yes | See column shape below. |
+| `data` | `T[]` | yes | Rows to render, in the order they should appear before any sorting. |
+| `getRowKey` | `(row: T, index: number) => string \| number` | yes | Stable React key per row. |
+| `className` | `string` | no | Extra classes on the horizontal-scroll wrapper `div`. |
+| `captionClassName` | `string` | no | Extra classes on the `<caption>`. |
+| `defaultSortKey` | `string` | no | Column `key` sorted by on first render. |
+| `defaultSortDirection` | `"ascending" \| "descending"` | no | Defaults to `"ascending"`. |
+
+Each entry in `columns` is:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `key` | `string` | yes | Unique column id; doubles as the sort key. |
+| `header` | `ReactNode` | yes | Header cell content. |
+| `render` | `(row: T, index: number) => ReactNode` | yes | Cell content for a row. |
+| `rowHeader` | `boolean` | no | Renders the cell as `<th scope="row">` instead of `<td>`. Use on the column that identifies the row (e.g. a name or id). |
+| `align` | `"left" \| "center" \| "right"` | no | Text alignment for both the header and body cells. Defaults to `"left"`. |
+| `sortable` | `true` | no | When set, `sortAccessor` becomes required and the header renders as a button. |
+| `sortAccessor` | `(row: T) => string \| number` | when `sortable` | Comparable value used to order rows. Numbers compare numerically; everything else compares with `localeCompare`. |
+| `headerClassName` / `cellClassName` | `string` | no | Extra classes appended to the header or body cell. |
+
+Every header cell gets `scope="col"`. Sortable columns toggle between ascending
+and descending on click and set `aria-sort` (`"ascending"`, `"descending"`, or
+`"none"` when another sortable column is active) on the active `<th>`; the sort
+is a stable client-side sort that never mutates `data`. Non-sortable columns
+render as plain header text with no `aria-sort` attribute.
+
+```tsx
+<DataTable
+  caption="API keys"
+  data={items}
+  getRowKey={(item) => item.prefix}
+  columns={[
+    {
+      key: "label",
+      header: "Label",
+      rowHeader: true,
+      sortable: true,
+      sortAccessor: (item) => item.label,
+      render: (item) => item.label,
+    },
+    {
+      key: "createdAt",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (item) => item.createdAtMs ?? Number.NEGATIVE_INFINITY,
+      render: (item) => <TimeAgo ts={item.createdAtMs} />,
+    },
+  ]}
+/>
+```
+
+Used by the API keys page (`src/app/api-keys/page.tsx`) in place of a hand-rolled
+list; prefer it over new bespoke `<ul>`/`<table>` markup for tabular data.
 
 ### `KeyValueGrid`
 
